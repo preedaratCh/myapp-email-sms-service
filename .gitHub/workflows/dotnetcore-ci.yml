@@ -1,0 +1,63 @@
+name: Deploy .NET Core Web API to web hosting via FTP
+
+on:
+  push:
+    branches: ["release"] # Trigger when code is pushed to the 'release' branch
+  path: "email-sms-sending-api/*" # Trigger when changes are made in the 'email-sms-sending-api' folder
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: read # Allow access to the repository's contents
+
+concurrency:
+  group: "api-deploy" # Ensure only one deployment runs at a time
+  cancel-in-progress: false # Do not cancel any in-progress deployments
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Run the build job on the latest Ubuntu environment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # Checkout the repository code to the runner
+
+      - name: Set up .NET 9.0 SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: "9.0.x" # Set up the .NET 9.0 SDK
+
+      - name: Restore dependencies
+        run: dotnet restore # Restore the project dependencies
+
+      - name: Build project
+        run: dotnet build --configuration Release # Build the project in Release mode
+
+      - name: Publish project
+        run: dotnet publish --configuration Release --output ./publish # Publish the project to a folder
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-api-artifact # Name the artifact
+          path: ./publish # Path to the published output directory
+
+  deploy:
+    runs-on: ubuntu-latest # Run the deploy job on the latest Ubuntu environment
+    needs: build # Ensure deploy job runs after build job is successful
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # Checkout the repository code to the runner
+
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: web-api-artifact # Download the artifact from the build job
+          path: ./publish # Destination folder to download to
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
+        with:
+          server: ${{ secrets.FTP_SERVER }} # FTP server address from GitHub Secrets
+          username: ${{ secrets.FTP_USERNAME }} # FTP username from GitHub Secrets
+          password: ${{ secrets.FTP_PASSWORD }} # FTP password from GitHub Secrets
+          local-dir: ./publish # Directory containing the published files
+          server-dir: /path/to/your/server/directory # Directory on the FTP server where files should be deployed
